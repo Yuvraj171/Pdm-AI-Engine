@@ -1,0 +1,18 @@
+
+Running: TC-06: The Recovery (Low Pressure, Stable Drift)
+   Input: Pressure=3.2, Drift=0.0
+   XGBoost Decision: Safe (0) (Risk: 1.5%)
+   RandFor Decision: Safe (0) (Risk: 22.9%)
+   -> FINAL ACTION: NONE (System Nominal)
+
+Running: TC-07: Sensor Freeze (Normal Pressure, Zero Drift)
+   Input: Pressure=3.5, Drift=0.0
+   XGBoost Decision: Safe (0) (Risk: 1.2%)
+   RandFor Decision: Safe (0) (Risk: 5.4%)
+   -> FINAL ACTION: NONE (System Nominal)
+
+Running: TC-08: Start-up Transient (Low Pressure, Positive Drift)
+   Input: Pressure=1.5, Drift=0.2
+   XGBoost Decision: FAIL (1) (Risk: 99.9%)
+   RandFor Decision: FAIL (1) (Risk: 62.7%)
+   -> FINAL ACTION: EMERGENCY STOP (Critical Failure)
