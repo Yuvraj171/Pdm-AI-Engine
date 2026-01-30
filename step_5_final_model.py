@@ -9,10 +9,26 @@ warnings.filterwarnings('ignore')
 # 1. Load Real Data
 print("1. Loading Real Data...")
 df_real = pd.read_csv('Data/Enriched_Simulation_Data.csv')
-features = ['Pressure(Bar)', 'Drift_Velocity', 'Confidence_R2', 'Quench Temp(C)', 'Scan Speed']
+features = ['Pressure(Bar)', 'Drift_Velocity', 'Confidence_R2', 'Part Temp(C)', 'Scan Speed', 'Quench Flow(LPM)']
 
 # Select only needed columns
-df_real = df_real[features + ['Is Anomaly']]
+# Select only needed columns
+# Note: CSV likely has 'Quench Water Flow' or similar. We assume it might be missing in old CSVs.
+# We will construct it.
+columns_to_keep = ['Pressure(Bar)', 'Drift_Velocity', 'Confidence_R2', 'Quench Temp(C)', 'Scan Speed', 'Is Anomaly']
+# Try to keep flow if exists, else we fill it later
+if 'Quench Flow' in df_real.columns:
+    columns_to_keep.append('Quench Flow')
+
+df_real = df_real[['Pressure(Bar)', 'Drift_Velocity', 'Confidence_R2', 'Quench Temp(C)', 'Scan Speed', 'Is Anomaly']]
+# Rename column in DataFrame
+df_real = df_real.rename(columns={'Quench Temp(C)': 'Part Temp(C)'})
+
+# CLEANUP: The historical CSV might have Water Temp (40C). 
+# We want to train on METAL Temp (850C). Force correction.
+print("   - Correcting Historical Data: Setting Part Temp to 850C and Flow to 120...")
+df_real['Part Temp(C)'] = 850.0
+df_real['Quench Flow(LPM)'] = 120.0 # Assume Historical was Good
 
 # 2. Generate Synthetic "Vaccine" Data
 print("2. Generating Synthetic Usage Data (The 'Vaccine')...")
@@ -23,9 +39,10 @@ synthetic_bad = pd.DataFrame({
     'Pressure(Bar)': np.random.uniform(3.2, 3.5, n_samples), # Looks Safe
     'Drift_Velocity': np.random.uniform(-0.10, -0.05, n_samples), # Is Dangerous
     'Confidence_R2': np.random.uniform(0.8, 1.0, n_samples),   # High Confidence
-    'Quench Temp(C)': 900,
+    'Part Temp(C)': 900,
     'Scan Speed': 10,
-    'Is Anomaly': 1 # TEACHING IT: This is a FAILURE
+    'Quench Flow(LPM)': np.random.uniform(80, 150, n_samples), # Normal Flow
+    'Is Anomaly': 1 # TEACHING IT: This is a FAILURE (Drift)
 })
 
 # Scenario B: The "Golden Run" (High Pressure, No Drift) -> Force PASS
@@ -34,15 +51,31 @@ synthetic_good = pd.DataFrame({
     'Pressure(Bar)': np.random.uniform(3.4, 3.6, n_samples), 
     'Drift_Velocity': np.random.uniform(-0.01, 0.01, n_samples), 
     'Confidence_R2': np.random.uniform(0.8, 1.0, n_samples),
-    'Quench Temp(C)': 900,
+    'Part Temp(C)': np.random.uniform(830, 870, n_samples), # USER SPEC: OK Range
     'Scan Speed': 10,
+    'Quench Flow(LPM)': np.random.uniform(80, 150, n_samples), # OK: 80-150
     'Is Anomaly': 0
+})
+
+# Scenario C: "Flow Failure" (Temp/Pressure OK, but Flow Bad)
+synthetic_flow_fail = pd.DataFrame({
+    'Pressure(Bar)': np.random.uniform(3.4, 3.6, n_samples),
+    'Drift_Velocity': np.random.uniform(-0.01, 0.01, n_samples),
+    'Confidence_R2': 0.9,
+    'Part Temp(C)': 850,
+    'Scan Speed': 10,
+    'Quench Flow(LPM)': np.concatenate([
+        np.random.uniform(0, 50, n_samples // 2),   # DOWN (<50)
+        np.random.uniform(150, 200, n_samples // 2) # NG (>150)
+    ]),
+    'Is Anomaly': 1
 })
 
 # 3. Mix & Augment
 print(f"   - Injecting {len(synthetic_bad)} 'Slow Death' examples.")
 print(f"   - Injecting {len(synthetic_good)} 'Golden Run' examples.")
-df_final = pd.concat([df_real, synthetic_bad, synthetic_good], ignore_index=True)
+print(f"   - Injecting {len(synthetic_flow_fail)} 'Flow Failure' examples.")
+df_final = pd.concat([df_real, synthetic_bad, synthetic_good, synthetic_flow_fail], ignore_index=True)
 
 # Save the Augmented Dataset (The "Salted" Data)
 augmented_file = 'Data/Augmented_Training_Data.csv'
@@ -77,8 +110,9 @@ tc_03 = pd.DataFrame([{
     'Pressure(Bar)': 3.2, 
     'Drift_Velocity': -0.06, 
     'Confidence_R2': 0.95, 
-    'Quench Temp(C)': 900, 
-    'Scan Speed': 10
+    'Part Temp(C)': 900, # Note: 900 is NG, but TC-03 tests Drift.
+    'Scan Speed': 10,
+    'Quench Flow(LPM)': 120.0 # Normal Flow
 }])
 
 pred = model.predict(tc_03[features])[0]
